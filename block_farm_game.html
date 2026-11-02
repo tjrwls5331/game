@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>블록 농장 생활</title>
+<style>
+  *{box-sizing:border-box} body{margin:0;overflow:hidden;background:#9ed6ff;font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif;color:#fff}
+  canvas{display:block} #hud{position:fixed;inset:0;pointer-events:none;text-shadow:0 2px 3px #243326}
+  .panel{background:rgba(24,43,55,.78);border:1px solid rgba(255,255,255,.25);border-radius:12px;padding:10px 14px;backdrop-filter:blur(5px)}
+  #topLeft{position:absolute;left:16px;top:14px;display:flex;gap:8px;flex-wrap:wrap;font-weight:800}
+  #topRight{position:absolute;right:16px;top:14px;font-weight:800}
+  #help{position:absolute;left:50%;bottom:108px;transform:translateX(-50%);white-space:nowrap;font-size:13px;background:rgba(20,32,35,.62);padding:7px 13px;border-radius:20px}
+  #crosshair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:28px;font-weight:300}
+  #hotbar{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);display:flex;gap:4px;background:rgba(22,31,35,.65);padding:6px;border:2px solid #aeb9b5;border-radius:7px}
+  .slot{width:54px;height:54px;border:2px solid #78847f;background:rgba(40,51,48,.7);display:flex;align-items:center;justify-content:center;position:relative;font-size:25px;border-radius:3px}
+  .slot.active{border:3px solid white;box-shadow:0 0 0 2px #d9d5b8}
+  .count{position:absolute;right:4px;bottom:1px;font-size:12px;font-weight:bold}
+  #toast{position:absolute;left:50%;top:18%;transform:translateX(-50%);font-size:18px;font-weight:800;background:rgba(23,43,30,.82);padding:10px 18px;border-radius:10px;opacity:0;transition:opacity .2s}
+  #prompt{position:absolute;left:50%;top:57%;transform:translateX(-50%);font-weight:700;font-size:14px;background:rgba(20,32,35,.6);padding:6px 10px;border-radius:8px}
+  #inventory{display:none;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(440px,92vw);background:rgba(30,44,41,.96);border:3px solid #c3b69a;border-radius:14px;padding:20px;pointer-events:auto;text-shadow:none}
+  #inventory h2{margin:0 0 10px} #inventory p{line-height:1.7;margin:7px 0}
+  button{font:inherit;font-weight:800;border:0;border-radius:8px;padding:10px 13px;cursor:pointer;background:#e5bd62;color:#352a14;margin-top:8px}
+  #inventory button{margin-right:6px} #footer{font-size:12px;opacity:.8}
+  @media(max-width:650px){.slot{width:39px;height:43px;font-size:20px}#help{font-size:11px;bottom:85px}#hotbar{bottom:12px}.panel{padding:7px 9px;font-size:13px}}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="topLeft">
+    <div class="panel">🪙 <span id="coins">350</span> 코인</div>
+    <div class="panel">🌱 농장 Lv. <span id="level">1</span></div>
+    <div class="panel">🐾 가축 <span id="animalCount">0</span>마리</div>
+  </div>
+  <div id="topRight" class="panel">🎒 가방 [E]</div>
+  <div id="crosshair">＋</div>
+  <div id="prompt">가축을 바라보고 우클릭: 끈 던지기</div>
+  <div id="help">WASD 이동 · 마우스 시점 · 우클릭: 포획/끌기 · 좌클릭: 다 큰 가축 판매 · E: 가방 · 1~6: 아이템</div>
+  <div id="hotbar">
+    <div class="slot active" data-slot="1">🪢<span class="count">1</span></div>
+    <div class="slot" data-slot="2">🌱<span class="count" id="seedCount">12</span></div>
+    <div class="slot" data-slot="3">🌾<span class="count" id="wheatCount">0</span></div>
+    <div class="slot" data-slot="4">🪣</div>
+    <div class="slot" data-slot="5">🪓</div>
+    <div class="slot" data-slot="6" title="새 포획 스코프">🔭</div>
+  </div>
+  <div id="toast"></div>
+  <div id="inventory">
+    <h2>🎒 농장 가방</h2>
+    <p>🪙 보유 코인: <b id="bagCoins">350</b></p>
+    <p>🪢 포획용 끈: <b>무제한</b></p>
+    <p>🌱 밀 씨앗: <b id="bagSeeds">12</b>개　 🌾 수확한 밀: <b id="bagWheat">0</b>개</p>
+    <p>🐖 돼지 · 🐄 소 · 🐑 양 · 🐔 닭 · 🐐 염소 · 🦆 오리 · 🐎 말 · 🐇 토끼 · 🦙 라마 · 🦃 칠면조</p>
+    <p>가축은 농장 안에서 시간이 지나면 성장해요. 다 자란 가축을 바라보고 좌클릭하면 판매됩니다.</p>
+    <button id="plantBtn">🌱 밀 씨앗 심기 (가까운 밭)</button>
+    <button id="expandBtn">🪵 울타리 확장 (250 코인)</button>
+    <button id="closeBag">닫기 [E]</button>
+    <p id="footer">팁: 가축 가까이에서 우클릭하면 포획해 농장으로 데려옵니다. 밀은 일정 시간이 지나면 자라요.</p>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x8295a8);
+  scene.fog = new THREE.Fog(0x8295a8, 45, 105);
+  const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, .1, 180);
+  camera.position.set(0,1.7,8);
+  const renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  document.body.appendChild(renderer.domElement);
+  const hemi=new THREE.HemisphereLight(0xc0d1df,0x353d2b,0.9); scene.add(hemi);
+  const sun=new THREE.DirectionalLight(0xffd2a0,1.0); sun.position.set(-20,30,12); sun.castShadow=true; sun.shadow.mapSize.set(1024,1024); scene.add(sun);
+  const sunBall=new THREE.Mesh(new THREE.SphereGeometry(2.1,16,12),new THREE.MeshBasicMaterial({color:0xffd28a})); scene.add(sunBall);
+
+  const mat=(color,rough=.9)=>new THREE.MeshStandardMaterial({color,roughness:rough});
+  // Procedural grass texture: layered greens, flecks, and tiny blades.
+  const grassCanvas=document.createElement('canvas'); grassCanvas.width=grassCanvas.height=128;
+  const gx=grassCanvas.getContext('2d'); gx.fillStyle='#456d3b'; gx.fillRect(0,0,128,128);
+  for(let i=0;i<1800;i++){const x=Math.random()*128,y=Math.random()*128;gx.fillStyle=['#385f34','#507d3d','#608847','#314f30','#78914a'][Math.floor(Math.random()*5)];gx.globalAlpha=.25+Math.random()*.5;gx.fillRect(x,y,1+Math.random()*3,1+Math.random()*4)} gx.globalAlpha=1;
+  const grassTex=new THREE.CanvasTexture(grassCanvas); grassTex.wrapS=grassTex.wrapT=THREE.RepeatWrapping; grassTex.repeat.set(22,22);
+  const grassMat=new THREE.MeshStandardMaterial({map:grassTex,color:0x9aa88a,roughness:1}), dirtMat=mat(0x765038), woodMat=mat(0x986537), fenceMat=mat(0x9b7142), leafMat=mat(0x347b32), leaf2=mat(0x4d9638);
+  const boxGeo=new THREE.BoxGeometry(1,1,1);
+  function cube(parent, x,y,z,sx,sy,sz, material, cast=true){
+    const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),material);m.position.set(x,y,z);m.castShadow=cast;m.receiveShadow=true;parent.add(m);return m;
+  }
+  // Ground and distant hills
+  const ground=cube(scene,0,-.35,0,180,.6,180,grassMat,false); ground.material.map.repeat.set(22,22);
+  for(let i=0;i<18;i++){let x=(Math.random()-.5)*100,z=-25-Math.random()*60;let h=2+Math.random()*5;cube(scene,x,h/2-0.2,z,5+Math.random()*8,h,5+Math.random()*8,mat(i%2?0x669b4b:0x7da75b),false)}
+  // Farm plot, house and barn
+  const plot=cube(scene,-5,.01,-4,12,.08,12,dirtMat,false);
+  const cropSpots=[];
+  for(let x=-10.3;x<.6;x+=.75)for(let z=-9.2;z<1.1;z+=.75){
+    cube(scene,x,.09,z,.5,.06,.5,mat(0x5a3e2a),false);
+    const c=cube(scene,x,.22,z,.16,.28,.16,mat(0x6cae34),false); c.visible=false;
+    cropSpots.push({x,z,mesh:c,planted:false,readyAt:0});
+  }
+  function makeTree(x,z){
+    cube(scene,x,1.25,z,.7,2.5,.7,woodMat);
+    const crown=cube(scene,x,3,z,3.2,2.5,3.2,leafMat);cube(scene,x-.7,3.7,z-.25,2,1.5,2,leaf2);
+  }
+  [[-15,-4],[-17,4],[-15,13],[15,-7],[18,3],[13,14],[3,-17],[-8,-17]].forEach(p=>makeTree(...p));
+  // farmhouse
+  const house=new THREE.Group();scene.add(house);house.position.set(4,0,-11);
+  cube(house,0,1.3,0,5,2.6,4,mat(0xc6a16b));
+  cube(house,0,3,0,5.6,.45,4.6,mat(0x60422c));
+  cube(house,0,3.55,0,5.5,.45,3.2,mat(0x70492d));
+  cube(house,0,3.8,0,4.2,.35,2.3,mat(0x7b5131));
+  cube(house,0,.9,2.03,1.1,1.8,.12,mat(0x5a3821));
+  cube(house,-1.4,1.7,2.08,.65,.65,.1,mat(0x8dd8ff));
+  // barn
+  const barn=new THREE.Group();scene.add(barn);barn.position.set(10,0,-18);
+  cube(barn,0,1.8,0,6,3.6,5,mat(0xa9362c));
+  cube(barn,0,3.8,0,6.4,.35,5.4,mat(0xe6d7b6));
+  cube(barn,0,4.35,0,5.8,.35,3.7,mat(0x8c2b24));
+  cube(barn,0,4.65,0,4.4,.3,2.5,mat(0x9e3229));
+  cube(barn,0,1.2,2.55,2.4,2.4,.15,mat(0x4b3327));
+  // Fenced starting pen, expansion changes dimensions
+  const fences=new THREE.Group();scene.add(fences);
+  let penHalf=7;
+  function buildFence(){
+    while(fences.children.length) {const o=fences.children.pop();fences.remove(o)}
+    const h=penHalf, z=5, x=7;
+    // rectangle around grassy animal pasture, opening on front
+    for(let xx=x-h;xx<=x+h;xx+=1.7){
+      cube(fences,xx,.65,z-h,.22,1.3,.22,fenceMat);
+      cube(fences,xx,.65,z+h,.22,1.3,.22,fenceMat);
+      if(Math.abs(xx-x)>1.4){cube(fences,xx,.48,z+h,1.7,.16,.16,woodMat);cube(fences,xx,.95,z+h,1.7,.16,.16,woodMat)}
+      cube(fences,xx,.48,z-h,1.7,.16,.16,woodMat);cube(fences,xx,.95,z-h,1.7,.16,.16,woodMat);
+    }
+    for(let zz=z-h;zz<=z+h;zz+=1.7){
+      cube(fences,x-h,.65,zz,.22,1.3,.22,fenceMat);cube(fences,x+h,.65,zz,.22,1.3,.22,fenceMat);
+      cube(fences,x-h,.48,zz,.16,.16,1.7,woodMat);cube(fences,x-h,.95,zz,.16,.16,1.7,woodMat);
+      cube(fences,x+h,.48,zz,.16,.16,1.7,woodMat);cube(fences,x+h,.95,zz,.16,.16,1.7,woodMat);
+    }
+  }
+  buildFence();
+  // Pond
+  const water=new THREE.Mesh(new THREE.CylinderGeometry(4,4,.12,32),mat(0x3eafd5,.3));water.position.set(-10,.03,10);scene.add(water);
+  for(let i=0;i<20;i++){const f=cube(scene,(Math.random()-.5)*32,.04,(Math.random()-.5)*32,.12,.04,.12,mat(0xf1e8b4),false);}
+
+  const animalTypes=[
+    {name:'돼지',emoji:'🐖',color:0xe99b9c,price:55,scale:1,head:0xe99b9c},
+    {name:'소',emoji:'🐄',color:0xf1eee1,price:110,scale:1.25,head:0xf1eee1,spots:true},
+    {name:'양',emoji:'🐑',color:0xe9e4d5,price:75,scale:.9,head:0xe5b6a1},
+    {name:'닭',emoji:'🐔',color:0xf3e4b8,price:25,scale:.55,head:0xf3e4b8},
+    {name:'염소',emoji:'🐐',color:0xd8d1b9,price:85,scale:.9,head:0xd8d1b9},
+    {name:'오리',emoji:'🦆',color:0x9b9c48,price:30,scale:.5,head:0x9b9c48},
+    {name:'말',emoji:'🐎',color:0x98603a,price:140,scale:1.2,head:0x98603a},
+    {name:'토끼',emoji:'🐇',color:0xcac3b5,price:35,scale:.48,head:0xcac3b5},
+    {name:'라마',emoji:'🦙',color:0xe5d7b7,price:100,scale:1.1,head:0xe5d7b7},
+    {name:'칠면조',emoji:'🦃',color:0x704b37,price:65,scale:.8,head:0x704b37}
+  ];
+  const animals=[]; const animalRoot=new THREE.Group();scene.add(animalRoot);
+  function createAnimal(typeIndex,x,z,wild=true){
+    const t=animalTypes[typeIndex],g=new THREE.Group();animalRoot.add(g);g.position.set(x,0,z);g.userData={typeIndex,wild,growth:Math.random()*.45+.12,captured:!wild};
+    const s=t.scale;
+    const body=cube(g,0,.72*s,0,1.2*s,.72*s,.72*s,mat(t.color));
+    cube(g,.55*s,1.05*s,.03, .52*s,.55*s,.52*s,mat(t.head));
+    cube(g,.78*s,1.0*s,.28,.24*s,.16*s,.12*s,mat(t.name==='돼지'?0xe37e88:0x403b35));
+    cube(g,.78*s,1.0*s,-.23,.24*s,.16*s,.12*s,mat(t.name==='돼지'?0xe37e88:0x403b35));
+    cube(g,.65*s,1.18*s,.25,.08*s,.08*s,.06*s,mat(0x171717));
+    cube(g,.65*s,1.18*s,-.25,.08*s,.08*s,.06*s,mat(0x171717));
+    for(const lx of [-.38,.38])for(const lz of [-.24,.24])cube(g,lx,.27*s,lz,.18*s,.55*s,.18*s,mat(t.color));
+    if(t.name==='소'){
+      cube(g,-.22*s,.92*s,.37,.25*s,.22*s,.06,mat(0x302d2a));cube(g,-.35*s,.62*s,-.37,.34*s,.23*s,.06,mat(0x302d2a));
+    }
+    if(t.name==='양'){cube(g,-.05*s,1.1*s,0,1.25*s,.4*s,.9*s,mat(0xf7f0df));}
+    if(t.name==='닭'||t.name==='칠면조'){cube(g,.8*s,1.34*s,0,.14*s,.18*s,.14*s,mat(0xd94c31));}
+    if(t.name==='말'||t.name==='라마'||t.name==='염소'){cube(g,.5*s,1.45*s,0,.16*s,.65*s,.16*s,mat(t.color));}
+    if(wild){g.position.x=x;g.position.z=z;}else{g.position.x=clamp(x,7-penHalf+1,7+penHalf-1);g.position.z=clamp(z,6-penHalf+1,6+penHalf-1);}
+    animals.push(g);return g;
+  }
+  function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+  // Wildlife roam outside the pen
+  for(let i=0;i<14;i++){
+    let type=Math.floor(Math.random()*animalTypes.length),x,z;
+    do{x=(Math.random()-.5)*36;z=(Math.random()-.5)*34;}while((x>7-penHalf-2&&x<7+penHalf+2&&z>5-penHalf-2&&z<5+penHalf+2)||(x> -1&&x<13&&z< -7));
+    createAnimal(type,x,z,true);
+  }
+  let coins=350,seeds=12,wheat=0,selected=1,bagOpen=false,heldAnimal=null,toastTimer=0;
+  const coinsEl=document.querySelector('#coins'),levelEl=document.querySelector('#level'),countEl=document.querySelector('#animalCount'),toastEl=document.querySelector('#toast'),promptEl=document.querySelector('#prompt');
+  function toast(s){toastEl.textContent=s;toastEl.style.opacity=1;clearTimeout(toastTimer);toastTimer=setTimeout(()=>toastEl.style.opacity=0,2200)}
+  function updateHUD(){
+    coinsEl.textContent=coins;document.querySelector('#bagCoins').textContent=coins;
+    document.querySelector('#seedCount').textContent=seeds;document.querySelector('#bagSeeds').textContent=seeds;
+    document.querySelector('#wheatCount').textContent=wheat;document.querySelector('#bagWheat').textContent=wheat;
+    countEl.textContent=animals.filter(a=>a.userData.captured).length;levelEl.textContent=1+Math.floor((penHalf-7)/2);
+  }
+  // First person controls
+  let yaw=0,pitch=0,keys={},locked=false;
+  // Decorative capture scope attached to the camera; slot 6 activates it.
+  const scopeTool=new THREE.Group(); camera.add(scopeTool); scopeTool.position.set(.48,-.38,-.72);
+  const darkMetal=mat(0x252b30), metalEdge=mat(0x515b60), lensMat=new THREE.MeshStandardMaterial({color:0x35627b,metalness:.55,roughness:.22});
+  cube(scopeTool,0,0,0,.16,.17,.62,darkMetal); cube(scopeTool,0,.12,-.12,.21,.18,.34,metalEdge);
+  const tube=new THREE.Mesh(new THREE.CylinderGeometry(.075,.075,.34,12),darkMetal);tube.rotation.x=Math.PI/2;tube.position.set(0,.17,-.12);scopeTool.add(tube);
+  const lens=new THREE.Mesh(new THREE.CircleGeometry(.062,16),lensMat);lens.position.set(0,.17,-.30);scopeTool.add(lens);
+  cube(scopeTool,0,-.13,.08,.18,.2,.2,woodMat); scopeTool.visible=false;
+  // Animated lasso curve and flying birds.
+  let ropeLine=null, ropeStart=0, ropeDuration=620, ropeEnd=new THREE.Vector3();
+  const birds=[]; const birdRoot=new THREE.Group(); scene.add(birdRoot);
+  function makeBird(x,y,z){
+    const g=new THREE.Group();birdRoot.add(g);g.position.set(x,y,z);
+    const feather=mat(0x4b4540), pale=mat(0xc8c0b1), beak=mat(0xc58b43);
+    cube(g,0,0,0,.42,.22,.22,feather);cube(g,.23,.035,0,.19,.16,.16,pale);cube(g,.34,.015,0,.12,.07,.08,beak);
+    const w1=cube(g,-.03,.13,.0,.48,.055,.25,feather);w1.position.set(-.03,.13,0);
+    const w2=cube(g,-.03,.13,0,.48,.055,.25,feather);w2.position.set(-.03,.13,0);w2.rotation.z=Math.PI;
+    g.userData={w1,w2,phase:Math.random()*6.28,caught:false};birds.push(g);return g;
+  }
+  for(let i=0;i<7;i++)makeBird((Math.random()-.5)*34,7+Math.random()*8,-10-Math.random()*32);
+  const player={x:0,z:8,y:1.7,speed:6};
+  camera.position.set(player.x,player.y,player.z);
+  renderer.domElement.addEventListener('click',()=>{if(!bagOpen)renderer.domElement.requestPointerLock?.()});
+  document.addEventListener('pointerlockchange',()=>locked=document.pointerLockElement===renderer.domElement);
+  document.addEventListener('mousemove',e=>{if(locked&&!bagOpen){yaw-=e.movementX*.0022;pitch-=e.movementY*.0022;pitch=clamp(pitch,-1.25,1.25)}});
+  document.addEventListener('keydown',e=>{
+    keys[e.code]=true;
+    if(['KeyW','KeyA','KeyS','KeyD','Space'].includes(e.code))e.preventDefault();
+    if(e.code==='KeyE'){bagOpen=!bagOpen;document.querySelector('#inventory').style.display=bagOpen?'block':'none';if(bagOpen&&document.pointerLockElement)document.exitPointerLock();else if(!bagOpen)renderer.domElement.requestPointerLock?.();}
+    if(/^Digit[1-6]$/.test(e.code)){selected=Number(e.code.slice(-1));document.querySelectorAll('.slot').forEach(s=>s.classList.toggle('active',Number(s.dataset.slot)===selected));scopeTool.visible=selected===6;document.querySelector('#crosshair').textContent=selected===6?'⌖':'＋';}
+    if(e.code==='Space')player.y=2.1;
+  });
+  document.addEventListener('keyup',e=>keys[e.code]=false);
+  document.addEventListener('contextmenu',e=>e.preventDefault());
+  function forward(){return new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw))}
+  function getTarget(maxDist=5){
+    const dir=new THREE.Vector3(-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch));
+    const ray=new THREE.Raycaster(camera.position,dir,0,maxDist);
+    let best=null,dist=maxDist;
+    for(const a of animals){const p=a.position.clone().add(new THREE.Vector3(0,.7,0));const d=p.distanceTo(camera.position);if(d<dist&&ray.ray.distanceToPoint(p)<.9){best=a;dist=d}}
+    return best;
+  }
+  function throwLasso(){
+    const target=getTarget(7); if(!target){toast('가축을 조준하고 조금 더 가까이 가보세요!');return}
+    ropeStart=performance.now(); ropeDuration=620; ropeEnd.copy(target.position).add(new THREE.Vector3(0,.7,0));
+    if(ropeLine){scene.remove(ropeLine);ropeLine.geometry.dispose();}
+    const points=[camera.position.clone(),camera.position.clone()]; const geom=new THREE.BufferGeometry().setFromPoints(points);
+    ropeLine=new THREE.Line(geom,new THREE.LineBasicMaterial({color:0xd2a16a,linewidth:3}));scene.add(ropeLine);
+    capture();
+  }
+  function catchBird(){
+    const dir=new THREE.Vector3(-Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),-Math.cos(yaw)*Math.cos(pitch));
+    let chosen=null,best=32;
+    for(const b of birds){if(b.userData.caught)continue;const point=b.position.clone();const d=point.distanceTo(camera.position);const ray=new THREE.Raycaster(camera.position,dir,0,35);if(d<best&&ray.ray.distanceToPoint(point)<1.35){chosen=b;best=d}}
+    if(!chosen){toast('스코프로 하늘을 나는 새를 조준해 보세요.');return}
+    chosen.userData.caught=true;chosen.visible=false;coins+=20;toast('새를 안전하게 포획했어요! +20 코인');updateHUD();
+  }
+  function capture(){
+    const a=getTarget(7);
+    if(!a){toast('가축을 조준하고 조금 더 가까이 가보세요!');return}
+    if(a.userData.captured){heldAnimal=a;toast(animalTypes[a.userData.typeIndex].name+'을(를) 끈으로 이끌고 있어요.');return}
+    a.userData.captured=true;heldAnimal=a;
+    const h=7-penHalf+1, max=7+penHalf-1;
+    a.position.x=clamp(player.x+Math.sin(yaw)*2,h,max);a.position.z=clamp(player.z+Math.cos(yaw)*2,6-penHalf+1,6+penHalf-1);
+    toast('포획 성공! '+animalTypes[a.userData.typeIndex].name+'을(를) 농장으로 데려왔어요.');updateHUD();
+  }
+  function sell(){
+    const a=getTarget(5);
+    if(!a){toast('판매할 가축을 바라보세요.');return}
+    if(!a.userData.captured){toast('먼저 우클릭으로 가축을 포획하세요.');return}
+    if(a.userData.growth<1){toast('아직 어려요! 조금 더 기다려 주세요.');return}
+    const t=animalTypes[a.userData.typeIndex],price=t.price+Math.floor(t.price*a.userData.growth*.2);
+    coins+=price;scene.remove(a);animals.splice(animals.indexOf(a),1);if(heldAnimal===a)heldAnimal=null;
+    toast(t.name+' 판매 완료! +'+price+' 코인');updateHUD();
+  }
+  document.addEventListener('mousedown',e=>{if(bagOpen)return;if(e.button===2)throwLasso();if(e.button===0&&locked){if(selected===6)catchBird();else sell()}});
+  document.querySelector('#closeBag').onclick=()=>{bagOpen=false;document.querySelector('#inventory').style.display='none';renderer.domElement.requestPointerLock?.()};
+  document.querySelector('#plantBtn').onclick=()=>{
+    if(seeds<=0){toast('씨앗이 없어요.');return}
+    const p=cropSpots.find(c=>!c.planted&&Math.hypot(c.x-player.x,c.z-player.z)<5);
+    if(!p){toast('밭 가까이 가서 씨앗을 심어 주세요.');return}
+    p.planted=true;p.readyAt=performance.now()+12000;p.mesh.visible=true;p.mesh.scale.set(.55,.7,.55);seeds--;toast('밀 씨앗을 심었어요! 약 12초 뒤 자랍니다.');updateHUD();
+  };
+  document.querySelector('#expandBtn').onclick=()=>{
+    if(coins<250){toast('코인이 부족해요. 가축을 키워 판매해 보세요.');return}
+    coins-=250;penHalf+=2;buildFence();toast('농장 확장 완료! 울타리가 넓어졌어요.');updateHUD();
+  };
+  // small environmental detail
+  for(let i=0;i<50;i++){const x=(Math.random()-.5)*70,z=(Math.random()-.5)*70;if(Math.abs(x)<11&&z<3&&z>-12)continue;cube(scene,x,.08,z,.09,.16,.09,mat(i%3?0xeadb8b:0xf1f1df),false)}
+  const clock=new THREE.Clock();
+  function animate(){
+    requestAnimationFrame(animate);const dt=Math.min(clock.getDelta(),.05);
+    if(!bagOpen){
+      const f=forward(),right=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+      let move=new THREE.Vector3();
+      if(keys.KeyW)move.add(f);if(keys.KeyS)move.sub(f);if(keys.KeyD)move.add(right);if(keys.KeyA)move.sub(right);
+      if(move.lengthSq())move.normalize().multiplyScalar(player.speed*dt);
+      player.x+=move.x;player.z+=move.z;
+      player.x=clamp(player.x,-38,38);player.z=clamp(player.z,-38,38);
+      // camera bob and slight jump recovery
+      player.y+=(1.7-player.y)*Math.min(1,dt*5);
+      camera.position.set(player.x,player.y,player.z);
+      camera.rotation.order='YXZ';camera.rotation.y=yaw;camera.rotation.x=pitch;
+      if(heldAnimal&&heldAnimal.parent){const dest=new THREE.Vector3(player.x+Math.sin(yaw)*2,0,player.z+Math.cos(yaw)*2);heldAnimal.position.x+=(dest.x-heldAnimal.position.x)*Math.min(1,dt*3);heldAnimal.position.z+=(dest.z-heldAnimal.position.z)*Math.min(1,dt*3);}
+    }
+    const now=performance.now();
+    // Time-of-day cycle: the sun lowers and the ranch slowly shifts into dusk.
+    const day=(now%90000)/90000; const angle=day*Math.PI*2;
+    sun.position.set(-24+Math.cos(angle)*18,Math.sin(angle)*28+2,12);
+    sunBall.position.set(-24+Math.cos(angle)*36,Math.max(-4,Math.sin(angle)*28+5),-38);
+    const dusk=THREE.MathUtils.clamp((.42-Math.sin(angle))*.72,0,0.78);
+    const skyDay=new THREE.Color(0x829bb1),skyNight=new THREE.Color(0x343c50),skySunset=new THREE.Color(0x9a6d62);
+    const sky=skyDay.clone().lerp(skyNight,dusk).lerp(skySunset,Math.max(0,1-Math.abs(Math.sin(angle)-.15))*0.28);
+    scene.background.copy(sky);scene.fog.color.copy(sky);hemi.intensity=.88-dusk*.42;sun.intensity=.95-dusk*.62;
+    sun.color.set(0xffd0a0).lerp(new THREE.Color(0x8795bd),dusk);
+    if(ropeLine){
+      const t=Math.min(1,(now-ropeStart)/ropeDuration),start=camera.position.clone().add(new THREE.Vector3(Math.sin(yaw)*.45,-.25,-.6));
+      const end=ropeEnd.clone();const mid=start.clone().lerp(end,t);mid.y+=Math.sin(t*Math.PI)*1.8;
+      const pts=[];for(let j=0;j<=18;j++){const q=j/18;const p1=start.clone().lerp(mid,q),p2=mid.clone().lerp(end,q);pts.push(p1.lerp(p2,q));}
+      ropeLine.geometry.dispose();ropeLine.geometry=new THREE.BufferGeometry().setFromPoints(pts);
+      if(t>=1){scene.remove(ropeLine);ropeLine.geometry.dispose();ropeLine=null;}
+    }
+    birds.forEach(b=>{if(b.userData.caught)return;b.position.x+=Math.sin(now*.00045+b.userData.phase)*dt*1.4;b.position.z+=Math.cos(now*.00032+b.userData.phase)*dt*.8;b.position.y+=Math.sin(now*.006+b.userData.phase)*dt*.45;b.rotation.y=Math.atan2(Math.cos(now*.00045+b.userData.phase),-Math.sin(now*.00032+b.userData.phase));const flap=Math.sin(now*.018+b.userData.phase)*.55;b.userData.w1.rotation.z=flap;b.userData.w2.rotation.z=-flap;});
+    cropSpots.forEach(c=>{if(c.planted&&now>c.readyAt){c.mesh.scale.set(1,1.7,1);c.mesh.material=mat(0xd9b52b);}});
+    animals.forEach(a=>{
+      if(a.userData.captured){a.userData.growth=Math.min(1,a.userData.growth+dt*.006);a.rotation.y+=Math.sin(now*.001+a.position.x)*dt*.08;}
+      else if(Math.random()<.004){a.position.x+=Math.random()-.5;a.position.z+=Math.random()-.5;}
+      a.position.x=clamp(a.position.x,-42,42);a.position.z=clamp(a.position.z,-42,42);
+    });
+    const target=getTarget(7);
+    promptEl.textContent=selected===6?'스코프 조준 후 좌클릭: 새 포획':target?(target.userData.captured?(target.userData.growth>=1?'좌클릭: '+animalTypes[target.userData.typeIndex].name+' 판매':'성장 중 '+Math.floor(target.userData.growth*100)+'%'):'우클릭: '+animalTypes[target.userData.typeIndex].name+' 포획'):'가축을 바라보고 우클릭: 끈 던지기';
+    if(Math.random()<.02)updateHUD();
+    renderer.render(scene,camera);
+  }
+  addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+  updateHUD();toast('마우스로 시점을 돌려 보세요! 6번은 새 포획 스코프예요.');animate();
+})();
+</script>
+</body>
+</html>
